@@ -222,8 +222,8 @@ func ParseFar2lAPC(data []byte) (*InputEvent, int, error) {
 				event.MouseEventFlags = stk.PopU32()
 				event.ControlKeyState = ControlKeyState(stk.PopU32())
 				event.ButtonState = stk.PopU32()
-				event.MouseY = stk.PopU16()
-				event.MouseX = stk.PopU16()
+				event.MouseY = int16(stk.PopU16())
+				event.MouseX = int16(stk.PopU16())
 				event.KeyDown = true
 				if (event.MouseEventFlags & MouseWheeled) != 0 {
 					delta := int16(event.ButtonState >> 16)
@@ -239,8 +239,8 @@ func ParseFar2lAPC(data []byte) (*InputEvent, int, error) {
 				event.ControlKeyState = ControlKeyState(stk.PopU8())
 				encBtn := stk.PopU16()
 				event.ButtonState = uint32(encBtn&0xFF) | uint32((encBtn&0xFF00)<<8)
-				event.MouseY = stk.PopU16()
-				event.MouseX = stk.PopU16()
+				event.MouseY = int16(stk.PopU16())
+				event.MouseX = int16(stk.PopU16())
 				event.KeyDown = true
 				if (event.MouseEventFlags & MouseWheeled) != 0 {
 					delta := int16(event.ButtonState >> 16)
@@ -510,8 +510,8 @@ func ParseMouseSGR(data []byte) (*InputEvent, int, error) {
 
 	event := &InputEvent{
 		Type:        MouseEventType,
-		MouseX:      uint16(px),
-		MouseY:      uint16(py),
+		MouseX:      int16(px),
+		MouseY:      int16(py),
 		KeyDown:     (command == 'M'), // 'M' = press/move, 'm' = release
 		InputSource: "sgr_mouse",
 	}
@@ -952,8 +952,8 @@ func ParseMouseLegacy(data []byte) (*InputEvent, int, error) {
 
 	event := &InputEvent{
 		Type:        MouseEventType,
-		MouseX:      uint16(cx) - 1, // 0-based
-		MouseY:      uint16(cy) - 1, // 0-based
+		MouseX:      int16(cx) - 1, // 0-based
+		MouseY:      int16(cy) - 1, // 0-based
 		InputSource: "legacy_mouse",
 	}
 
@@ -1025,8 +1025,8 @@ func ParseMouseURXVT(data []byte) (*InputEvent, int, error) {
 
 	event := &InputEvent{
 		Type:        MouseEventType,
-		MouseX:      uint16(cx) - 1, // 0-based
-		MouseY:      uint16(cy) - 1, // 0-based
+		MouseX:      int16(cx) - 1, // 0-based
+		MouseY:      int16(cy) - 1, // 0-based
 		InputSource: "urxvt_mouse",
 	}
 

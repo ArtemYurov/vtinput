@@ -150,8 +150,8 @@ func (r *Reader) readConPTYEventTimeout(timeout time.Duration) (*InputEvent, err
 	case 0x0002: // MOUSE_EVENT
 		ev := &InputEvent{
 			Type:            MouseEventType,
-			MouseX:          binary.LittleEndian.Uint16(rec.Event[0:2]),
-			MouseY:          binary.LittleEndian.Uint16(rec.Event[2:4]),
+			MouseX:          int16(binary.LittleEndian.Uint16(rec.Event[0:2])),
+			MouseY:          int16(binary.LittleEndian.Uint16(rec.Event[2:4])),
 			ButtonState:     binary.LittleEndian.Uint32(rec.Event[4:8]),
 			ControlKeyState: ControlKeyState(binary.LittleEndian.Uint32(rec.Event[8:12])),
 			MouseEventFlags: binary.LittleEndian.Uint32(rec.Event[12:16]),
