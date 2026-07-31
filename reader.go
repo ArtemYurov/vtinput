@@ -32,6 +32,11 @@ type Reader struct {
 	bypassReadEvent bool // for use by GUI backends (e.g. X11) to inject events directly
 
 	MetricsEnabled bool
+
+	// State for the wezterm + Win32InputMode double-wrap mouse
+	// workaround (see win_double_unwrap.go).
+	winDoubleBuf []byte
+	winWrapping  bool
 }
 
 // NewReader creates a synchronous input reader.
@@ -130,6 +135,34 @@ func (r *Reader) ReadEventTimeout(timeout time.Duration) (*InputEvent, error) {
 						altOffset = 1
 						parseBuf = r.buf[1:]
 					}
+				}
+
+				// 0. Wezterm + Win32InputMode workaround. When both are on,
+				// wezterm delivers SGR mouse events by wrapping each byte
+				// into its own Win32 keystroke event. Detect the signature
+				// (buffer starts with \x1b[0;0;27 — a Win32 event whose Uc
+				// is 0x1b/ESC) and start peeling; once the recovered bytes
+				// form a real escape sequence, prepend them to r.buf so the
+				// normal parsers below pick it up next iteration. See
+				// win_double_unwrap.go for the mechanics.
+				if isWinWrappedStart(parseBuf) || r.winWrapping {
+					if peeled, ok := peelWinWrapped(parseBuf, &r.winDoubleBuf); ok {
+						r.winWrapping = true
+						r.buf = r.buf[peeled+altOffset:]
+						if isWinDoubleComplete(r.winDoubleBuf) {
+							r.buf = append(append([]byte{}, r.winDoubleBuf...), r.buf...)
+							r.winDoubleBuf = r.winDoubleBuf[:0]
+							r.winWrapping = false
+						}
+						continue
+					}
+					if len(parseBuf) < 32 {
+						goto waitForMore
+					}
+					// Runaway accumulation: give up and let the normal
+					// chain try to make sense of whatever is in the buffer.
+					r.winDoubleBuf = r.winDoubleBuf[:0]
+					r.winWrapping = false
 				}
 
 				// 1. Focus
