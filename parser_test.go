@@ -219,11 +219,11 @@ func TestParseLegacyCSI(t *testing.T) {
 		expected uint16
 		mods     ControlKeyState
 	}{
-		{"Up Arrow", []byte("\x1b[A"), VK_UP, 0},
-		{"Ctrl+Up", []byte("\x1b[1;5A"), VK_UP, LeftCtrlPressed},
-		{"Shift+Alt+Down", []byte("\x1b[1;4B"), VK_DOWN, ShiftPressed | LeftAltPressed},
+		{"Up Arrow", []byte("\x1b[A"), VK_UP, EnhancedKey},
+		{"Ctrl+Up", []byte("\x1b[1;5A"), VK_UP, LeftCtrlPressed | EnhancedKey},
+		{"Shift+Alt+Down", []byte("\x1b[1;4B"), VK_DOWN, ShiftPressed | LeftAltPressed | EnhancedKey},
 		{"F5", []byte("\x1b[15~"), VK_F5, 0},
-		{"Ctrl+Delete", []byte("\x1b[3;5~"), VK_DELETE, LeftCtrlPressed},
+		{"Ctrl+Delete", []byte("\x1b[3;5~"), VK_DELETE, LeftCtrlPressed | EnhancedKey},
 		{"Shift+Tab", []byte("\x1b[Z"), VK_TAB, ShiftPressed},
 	}
 
@@ -288,8 +288,11 @@ func TestParseLegacyCSI_GarbageParams(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseLegacyCSI failed on garbage param: %v", err)
 	}
-	if evt.ControlKeyState != 0 {
-		t.Errorf("Expected 0 mods for garbage param, got 0x%X", evt.ControlKeyState)
+	// Второй параметр — мусор, поэтому Shift/Ctrl/Alt не должны выставиться;
+	// EnhancedKey остаётся, так как Up — навигационная клавиша независимо
+	// от модификаторов.
+	if evt.ControlKeyState != EnhancedKey {
+		t.Errorf("Expected only EnhancedKey for garbage param, got 0x%X", evt.ControlKeyState)
 	}
 }
 
@@ -961,5 +964,52 @@ func TestReadEvent_ArkanoidFix(t *testing.T) {
 	}
 	if e.InputSource != "legacy_alt_ctrl" {
 		t.Errorf("Expected source legacy_alt_ctrl, got %q", e.InputSource)
+	}
+}
+
+// TestParseLegacyCSI_ShiftDeleteIsEnhanced pins the specific regression this
+// EnhancedKey fix targets: a plain terminal's Shift+Delete (CSI 3;2~) must
+// be distinguishable from a numpad Delete, because callers such as f4 name
+// the two keys differently based solely on this flag. Before the fix,
+// ParseLegacyCSI never set EnhancedKey for any navigation-cluster key, so
+// every Del arriving over a plain (non-far2l, non-ConPTY) terminal looked
+// identical to a numpad Del regardless of Shift.
+func TestParseLegacyCSI_ShiftDeleteIsEnhanced(t *testing.T) {
+	event, _, err := ParseLegacyCSI([]byte("\x1b[3;2~"))
+	if err != nil {
+		t.Fatalf("ParseLegacyCSI failed: %v", err)
+	}
+	if event.VirtualKeyCode != VK_DELETE {
+		t.Fatalf("got VK 0x%X, want VK_DELETE", event.VirtualKeyCode)
+	}
+	if event.ControlKeyState&ShiftPressed == 0 {
+		t.Error("ShiftPressed not set")
+	}
+	if event.ControlKeyState&EnhancedKey == 0 {
+		t.Error("EnhancedKey not set for the navigation Delete key")
+	}
+}
+
+// TestParseLegacySS3_HomeEndAreEnhanced covers the SS3-encoded form of
+// Home/End (\x1bOH / \x1bOF), used by some terminals outside application
+// keypad mode. Same reasoning as the CSI case above.
+func TestParseLegacySS3_HomeEndAreEnhanced(t *testing.T) {
+	for _, tt := range []struct {
+		data []byte
+		want uint16
+	}{
+		{[]byte("\x1bOH"), VK_HOME},
+		{[]byte("\x1bOF"), VK_END},
+	} {
+		event, _, err := ParseLegacySS3(tt.data)
+		if err != nil {
+			t.Fatalf("ParseLegacySS3(%q) failed: %v", tt.data, err)
+		}
+		if event.VirtualKeyCode != tt.want {
+			t.Errorf("ParseLegacySS3(%q): got VK 0x%X, want 0x%X", tt.data, event.VirtualKeyCode, tt.want)
+		}
+		if event.ControlKeyState&EnhancedKey == 0 {
+			t.Errorf("ParseLegacySS3(%q): EnhancedKey not set", tt.data)
+		}
 	}
 }

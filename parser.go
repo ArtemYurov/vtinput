@@ -92,6 +92,24 @@ func mapCSICommandToVK(command byte) uint16 {
 	return 0
 }
 
+// isEnhancedVK reports whether vk is one of the Windows "enhanced" keys:
+// the navigation cluster (arrows, Home/End/PgUp/PgDn, Ins/Del) to the left
+// of the numeric keypad. This is the same set far2l itself uses to decide
+// the flag (TTYBackend.cpp and wxWinTranslations.cpp, both named
+// IsEnhancedKey) — kept in sync here so a plain terminal, not just far2l's
+// own extensions or ConPTY, reports these keys the way Windows console
+// input would, which is what farKeyNames-based naming (see f4's
+// EventToFarString) assumes throughout.
+func isEnhancedVK(vk uint16) bool {
+	switch vk {
+	case VK_LEFT, VK_RIGHT, VK_UP, VK_DOWN,
+		VK_HOME, VK_END, VK_PRIOR, VK_NEXT,
+		VK_INSERT, VK_DELETE:
+		return true
+	}
+	return false
+}
+
 // mapTildeToVK maps CSI ~ codes to Virtual Key Codes.
 func mapTildeToVK(code int) uint16 {
 	switch code {
@@ -363,6 +381,9 @@ func ParseLegacyCSI(data []byte) (*InputEvent, int, error) {
 			event.ControlKeyState |= ShiftPressed
 		}
 	}
+	if isEnhancedVK(event.VirtualKeyCode) {
+		event.ControlKeyState |= EnhancedKey
+	}
 	if event.VirtualKeyCode == 0 {
 		// Silence warnings for known modern terminators handled by other parsers (Win32 '_', Kitty 'u')
 		if command != '_' && command != 'u' {
@@ -452,6 +473,10 @@ func ParseLegacySS3(data []byte) (*InputEvent, int, error) {
 		}
 	default:
 		return nil, 0, ErrInvalidSequence
+	}
+
+	if isEnhancedVK(event.VirtualKeyCode) {
+		event.ControlKeyState |= EnhancedKey
 	}
 
 	return event, i + 1, nil
