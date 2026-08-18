@@ -1013,3 +1013,30 @@ func TestParseLegacySS3_HomeEndAreEnhanced(t *testing.T) {
 		}
 	}
 }
+
+// TestParseKitty_InsertDeleteAreEnhanced pins the same regression as
+// TestParseLegacyCSI_ShiftDeleteIsEnhanced, but for the Kitty protocol path.
+// ParseKitty already sets EnhancedKey for PgUp/PgDn (case 5/6) right next to
+// Insert/Delete (case 2/3), but the latter two were missed -- so a Kitty
+// terminal's plain Delete (CSI 3~) named the same "NumDel" a legacy-CSI
+// terminal's did before that fix, via f4's EventToFarString.
+func TestParseKitty_InsertDeleteAreEnhanced(t *testing.T) {
+	for _, tt := range []struct {
+		data []byte
+		want uint16
+	}{
+		{[]byte("\x1b[2~"), VK_INSERT},
+		{[]byte("\x1b[3~"), VK_DELETE},
+	} {
+		event, _, err := ParseKitty(tt.data)
+		if err != nil {
+			t.Fatalf("ParseKitty(%q) failed: %v", tt.data, err)
+		}
+		if event.VirtualKeyCode != tt.want {
+			t.Errorf("ParseKitty(%q): got VK 0x%X, want 0x%X", tt.data, event.VirtualKeyCode, tt.want)
+		}
+		if event.ControlKeyState&EnhancedKey == 0 {
+			t.Errorf("ParseKitty(%q): EnhancedKey not set", tt.data)
+		}
+	}
+}

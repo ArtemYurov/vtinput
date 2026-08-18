@@ -740,10 +740,12 @@ func ParseKitty(data []byte) (*InputEvent, int, error) {
 	case 2:
 		if command == '~' {
 			event.VirtualKeyCode = VK_INSERT
+			event.ControlKeyState |= EnhancedKey
 		}
 	case 3:
 		if command == '~' {
 			event.VirtualKeyCode = VK_DELETE
+			event.ControlKeyState |= EnhancedKey
 		}
 	case 5:
 		if command == '~' {
