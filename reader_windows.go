@@ -144,6 +144,18 @@ func (r *Reader) readConPTYEventTimeout(timeout time.Duration) (*InputEvent, err
 			ControlKeyState: ControlKeyState(binary.LittleEndian.Uint32(rec.Event[12:16])),
 			InputSource:     "ConPTY",
 		}
+		// f4 WINE.md §2k.3: under wineconsole, a Cyrillic keypress produced no
+		// visible reaction at all -- the debug.log showed only a bare KeyUp
+		// with Char=0, no KeyDown, no EDIT_TRACE. That leaves two candidates:
+		// either ReadConsoleInputW itself never hands back a KEY_DOWN record
+		// for the non-Latin layout under Wine, or one gets dropped somewhere
+		// between here and f4's dispatcher. This is the earliest possible
+		// point to look -- straight off the raw Win32 record, before any
+		// f4 or vtui logic runs -- so logging every record here (not just
+		// ones that pass some later filter) settles which side of that split
+		// the record is lost on.
+		Log("RAWKEY: down=%v vk=0x%X scan=0x%X char=%d(%q) mods=0x%X",
+			ev.KeyDown, ev.VirtualKeyCode, ev.VirtualScanCode, ev.Char, ev.Char, uint32(ev.ControlKeyState))
 		r.recordLatency(time.Since(r.lastReceivedAt))
 		return ev, nil
 
