@@ -67,20 +67,47 @@ func (r *Reader) Close() {
 	}
 }
 
+const (
+	// Some Windows console hosts briefly report ERROR_PIPE_NOT_CONNECTED while
+	// applying a buffer/window resize. Treating that single read failure as EOF
+	// makes vtui leave its main loop and makes f4 look like it crashed.
+	readEventRetryDelay     = 25 * time.Millisecond
+	maxTransientReadRetries = 80 // keep a genuinely disconnected console bounded
+)
+
 // GetEventChan returns a channel that yields input events.
 // It starts a background goroutine that calls ReadEvent() in a loop.
-// The channel is closed when the reader is closed or an error occurs.
+// The channel is closed when the reader is closed or an unrecoverable error occurs.
 func (r *Reader) GetEventChan() chan *InputEvent {
 	if !r.bypassReadEvent {
 		r.onceEventChan.Do(func() {
 			go func() {
 				defer close(r.EventChan)
+				transientReadRetries := 0
 				for {
 					e, err := r.ReadEvent()
 					if err != nil {
+						if isRetryableReadError(err) && transientReadRetries < maxTransientReadRetries {
+							transientReadRetries++
+							Log("ReadEvent transient error: %v; retry %d/%d", err, transientReadRetries, maxTransientReadRetries)
+							timer := time.NewTimer(readEventRetryDelay)
+							select {
+							case <-timer.C:
+								continue
+							case <-r.done:
+								if !timer.Stop() {
+									select {
+									case <-timer.C:
+									default:
+									}
+								}
+								return
+							}
+						}
 						Log("ReadEvent error: %v", err)
 						return
 					}
+					transientReadRetries = 0
 
 					select {
 					case r.EventChan <- e:

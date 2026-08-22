@@ -4,6 +4,7 @@ package vtinput
 
 import (
 	"encoding/binary"
+	"errors"
 	"io"
 	"os"
 	"time"
@@ -13,6 +14,14 @@ import (
 )
 
 var procReadConsoleInputW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReadConsoleInputW")
+
+// isRetryableReadError reports the console-host error observed while a
+// shortcut-configured buffer is being resized. The handle remains usable
+// after the host finishes applying the new buffer, so closing EventChan here
+// would turn a transient resize race into a process exit.
+func isRetryableReadError(err error) bool {
+	return errors.Is(err, windows.ERROR_PIPE_NOT_CONNECTED)
+}
 
 type inputRecord struct {
 	EventType EventType
