@@ -15,6 +15,8 @@ func (r *Reader) platformInit(_ io.Reader) {
 	syscall.Pipe(r.stopPipe[:])
 }
 
+func isRetryableReadError(error) bool { return false }
+
 func (r *Reader) readConPTYEventTimeout(_ time.Duration) (*InputEvent, error) {
 	return nil, nil
 }
