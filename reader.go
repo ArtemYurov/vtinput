@@ -195,7 +195,18 @@ func (r *Reader) ReadEventTimeout(timeout time.Duration) (*InputEvent, error) {
 				// 1. Focus
 				if len(parseBuf) >= 3 && parseBuf[1] == '[' && (parseBuf[2] == 'I' || parseBuf[2] == 'O') {
 					isVteBrokenSS3 := false
-					if parseBuf[2] == 'O' && len(parseBuf) > 3 {
+					if parseBuf[2] == 'O' {
+						if len(parseBuf) <= 3 {
+							// ESC [ O is the prefix of both focus-out and the
+							// broken-SS3 function keys (ESC [ O 3 P is Alt+F1
+							// from VTE and from the FreeBSD console). Three
+							// bytes are not enough to tell them apart, and
+							// guessing focus here swallows the ESC [ O and
+							// leaves "3P" to be typed as text. Wait instead;
+							// waitForMore re-checks and emits the focus event
+							// if no fourth byte ever arrives.
+							goto waitForMore
+						}
 						c := parseBuf[3]
 						if (c >= '0' && c <= '9') || c == 'P' || c == 'Q' || c == 'R' || c == 'S' {
 							isVteBrokenSS3 = true
@@ -410,6 +421,16 @@ func (r *Reader) ReadEventTimeout(timeout time.Duration) (*InputEvent, error) {
 					if len(r.buf) == 0 {
 						return nil, err
 					}
+				}
+				// Nothing followed: an ESC [ I / ESC [ O that stayed three
+				// bytes long really was focus tracking, not a truncated
+				// function key.
+				if len(parseBuf) == 3 && parseBuf[1] == '[' && (parseBuf[2] == 'I' || parseBuf[2] == 'O') {
+					event := &InputEvent{Type: FocusEventType, SetFocus: parseBuf[2] == 'I'}
+					r.buf = r.buf[3+altOffset:]
+					r.recordLatency(time.Since(r.lastReceivedAt))
+					Log("Reader: Parsed Focus %v (after wait).", event.SetFocus)
+					return event, nil
 				}
 				r.buf = r.buf[1:]
 				r.recordLatency(time.Since(r.lastReceivedAt))
