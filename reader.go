@@ -9,6 +9,15 @@ import (
 
 // Reader reads input synchronously without a background goroutine.
 // It measures the time from receiving raw bytes to generating an InputEvent.
+// plan9Read carries one completed read from the Plan 9 pump goroutine. The
+// type is declared here rather than in reader_plan9.go because Reader has a
+// field of this type and Reader is compiled on every platform.
+type plan9Read struct {
+	n   int
+	err error
+	buf []byte
+}
+
 type Reader struct {
 	in                     io.Reader
 	buf                    []byte
@@ -19,6 +28,12 @@ type Reader struct {
 	cancelEvent            uintptr // Windows only: event handle for cancellation
 	oldMode                uint32  // Windows only: saved console mode
 	stopPipe               [2]int  // Unix only: pipe for interrupting Poll
+
+	// Plan 9 only: it has no poll and no way to interrupt a blocked read,
+	// so reads happen in a goroutine that reports over a channel.
+	p9reads chan plan9Read
+	p9stop  chan struct{}
+	p9once  sync.Once
 
 	mu             sync.Mutex
 	lastLatency    time.Duration
